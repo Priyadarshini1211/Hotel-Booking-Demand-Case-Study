@@ -1,0 +1,294 @@
+---
+title: "Hotel Booking Demand Dataset Case Study - EDA"
+author: Priyadarshini Subramani
+date : 05/11/2020
+output:
+  
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Read the data
+
+```{r}
+library(tidyverse)
+theme_set(theme_light())
+
+hotels <- readr::read_csv('hotel_bookings.csv')
+glimpse(hotels)
+
+hotels %>% count(is_canceled)
+
+```
+# Explore the data
+The hotel stay had more reservation without children than with children
+```{r}
+
+hotels %>% 
+  filter(is_canceled == 0) %>% 
+  mutate(children = case_when(children+babies > 0 ~ "children", TRUE ~ "none")) %>%  count(children)
+```
+
+# Explore the hotel bookings
+
+Data cleansing
+
+```{r}
+hotel_stays<-hotels %>% 
+  filter(is_canceled == 0) %>% 
+  mutate(children = case_when(children+babies > 0 ~ "children", TRUE ~ "none"),
+  hotel = recode(hotel,'Citi Hotel'='City Hotel','Reosrt Hotel'='Resort Hotel'),
+  required_car_parking_spaces = case_when(required_car_parking_spaces>0~'parking', TRUE~ "none")) %>%   select(-is_canceled, -reservation_status,-babies)
+
+hotel_stays
+
+```
+
+# Explore the confirmed bookings proportion in City Hotel and Resort Hotel wrt children and without children guests
+
+```{r}
+
+hotel_stays %>% 
+  mutate(arrival_date_month = factor(arrival_date_month,levels = month.name)) %>% 
+  count(hotel,arrival_date_month,children) %>% 
+  group_by(hotel,children) %>% 
+  mutate(proportion = n/sum(n)) %>% 
+  ggplot(aes(arrival_date_month,proportion,fill=children))+
+  geom_col(position="dodge")+
+  facet_wrap(~hotel,nrow=2)
+
+```
+
+Observations:
+We can see that there were more checkins by the guest having children in the month of July and August for both the hotels.
+However, guest without children we dont notice any considerable booking variations.
+
+
+# Lets compare the car parking spaces for guests with children and without children.
+```{r}
+hotel_stays %>% 
+  count(hotel,required_car_parking_spaces,children) %>% 
+  group_by(hotel,children) %>% 
+  mutate(proportion = n/sum(n)) %>% 
+  ggplot(aes(required_car_parking_spaces,proportion,fill=children))+
+  geom_col(position="dodge")+
+  facet_wrap(~hotel,nrow=2)
+```
+
+Obervations:
+Guests having chidren tend to require car parking space. As the family size would relate to.
+
+
+# Exploring booking request by hotel type
+```{r}
+hotel_stays %>% 
+ggplot(aes(x=hotel))+
+  geom_bar(stat = "count")+
+  labs(title = "Bookings Request by hotel type",
+       x = "Hotel type",
+       y = "No. of bookings")
+
+```
+
+Observation: 
+There is comapritively more booking requests in City Hotel than compared to Resort Hotel.
+
+
+# Check the distribution of hotel type for cancellation/confirmed statuses.
+
+```{r}
+
+hotel_stays_overall<-hotels %>% 
+  filter(is_canceled %in% c(1,0)) %>% 
+  mutate(children = case_when(children+babies > 0 ~ "children", TRUE ~ "none"),
+  hotel = recode(hotel,'Citi Hotel'='City Hotel','Reosrt Hotel'='Resort Hotel'),
+  required_car_parking_spaces = case_when(required_car_parking_spaces>0~'parking', TRUE~ "none")) %>%   select(-reservation_status,-babies)
+
+
+hotel_stays_overall %>% 
+  count(is_canceled)
+
+ggplot(data = hotel_stays_overall,
+       aes(
+         x = hotel,
+         y = prop.table(stat(count)),
+         fill = factor(is_canceled),
+         label = scales::percent(prop.table(stat(count)))
+       )) +
+  
+  geom_bar(position = position_dodge()) +
+  geom_text(
+    stat = "count",
+    position = position_dodge(.9),
+    vjust = -0.5,
+    size = 3
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Cancellation Status by Hotel Type",
+       x = "Hotel Type",
+       y = "Count") +
+  scale_fill_discrete(
+    name = "Booking Status",
+    breaks = c("0", "1"),
+    labels = c("Cancelled", "Not Cancelled")
+  )
+
+```
+
+Obervation : 
+Out of the bookings that were made more than 66% were done for City Hotel, and around 34% were for Resort Hotel.
+However both the hotel types that proportion of cancellation more than the confirmed status.
+
+
+# Cancellation ratio by hotel type based on the lead time.
+Lead time is the gap between Booking made and actual date check in date
+```{r}
+ggplot(data = hotel_stays_overall, aes(
+  x = hotel,
+  y = lead_time,
+  fill = factor(is_canceled)
+)) +
+  geom_boxplot(position = position_dodge()) +
+  labs(
+    title = "Cancellation By Hotel Type",
+    subtitle = "Based on Lead Time",
+    x = "Hotel Type",
+    y = "Lead Time (Days)"
+  ) +
+  scale_fill_discrete(
+    name = "Booking Status",
+    breaks = c("0", "1"),
+    labels = c("Cancelled", "Not Cancelled")
+  )
+```
+
+Observation:
+We can see that most booking was cancelled very near to booked date as compared to non cancelled.
+
+
+# Explore month favorable for hotels when they can expect maximum demand.
+```{r}
+hotel_stays_overall$arrival_date_month <-
+  factor(hotel_stays_overall$arrival_date_month, levels = month.name)
+
+ggplot(data = hotel_stays_overall, aes(x = arrival_date_month)) +
+  geom_bar(fill = "steelblue") +
+  geom_text(stat = "count", aes(label = ..count..), hjust = 1) +
+  coord_flip() + labs(title = "Month Wise Booking Request",
+                      x = "Month",
+                      y = "Count") 
+```
+
+Obervation:
+Month wise booking analysis depicts that more number of booking request is in July ,August respectively.
+
+
+# Explore the booking made in not confirmed statuses month wise.
+
+```{r}
+ggplot(hotel_stays_overall, aes(arrival_date_month, fill = factor(is_canceled))) +
+  geom_bar() + geom_text(stat = "count", aes(label = ..count..), hjust = 1) +
+  coord_flip() + scale_fill_discrete(
+    name = "Booking Status",
+    breaks = c("0", "1"),
+    label = c("Cancelled", "Not Cancelled")
+  ) +
+  labs(title = "Booking Status by Month",
+       x = "Month",
+       y = "Count")
+```
+
+
+# Explore guest country and booking status country wise
+```{r}
+library(countrycode)
+hotel_stays_overall$country_name <- countrycode(hotel_stays_overall$country, 
+                                     origin = "iso3c",
+                                     destination = "country.name")
+
+hotel_stays_overall %>% 
+  group_by(country) %>% 
+  filter(n()>2000) %>% 
+ggplot(aes(country_name, fill = hotel)) + 
+  geom_bar(stat = "count", position = position_dodge()) + 
+  labs(title = "Booking Status by Country which has more than 2000 reservation",
+       x = "Country",
+       y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.background = element_blank())
+```
+
+Obervations:
+We have filtered the reservation counts greater than 2000, to accomodate our visualization.
+More reservations are done by Portugal guests than any other country.
+
+
+# Average daily rate by hotel type
+```{r}
+hotel_stays_overall %>% 
+ggplot(aes(x = adr, fill = hotel, color = hotel)) + 
+  geom_histogram(aes(y = ..density..), position = position_dodge(), binwidth = 50 ) +
+  geom_density(alpha = 0.2) +
+  labs(title = "Average Daily rate by Hotel",
+       x = "Hotel Price(in Euro)",
+       y = "Count") + scale_color_brewer(palette = "Paired") + 
+   theme(legend.position = "top")
+```
+
+
+# Hotel prefernce by customer type
+
+```{r}
+hotel_stays_overall %>% 
+ggplot(aes(customer_type, fill = hotel)) + 
+  geom_bar(stat = "count", position = position_dodge()) + 
+  labs(title = "Hotel Preference by Customer Type",
+       x = "Customer Type",
+       y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.background = element_blank())
+```
+
+Observation : 
+There are more Transiet type of customer in both the hotels
+
+
+# Does the hotel charge differently for different customer type
+
+```{r}
+hotel_stays_overall %>% 
+ggplot(aes(x = customer_type, y = adr, fill = hotel)) + 
+  geom_boxplot(position = position_dodge()) + 
+  ylim(0,1000)+
+  labs(title = "Price Charged by Hotel Type",
+       subtitle = "for Customer Type",
+       x = "Customer Type",
+       y = "Price per night(in Euro)")
+```
+
+
+
+
+
+# Scatter plots with total nights and total cost
+Creating two new columns to calculate total number of days stayed and total cost
+```{r}
+
+hotel_stays_overall %>% 
+mutate(stay_nights_total = stays_in_weekend_nights + stays_in_week_nights,
+stay_cost_total = adr * stay_nights_total) %>% 
+ggplot(aes(x=stay_nights_total,y=stay_cost_total,shape=hotel,color=is_canceled))+
+  geom_point(alpha=1)
+
+```
+
+
+
+
+Date of completion : 05/11/2020                                        Author: Priyadarshini Subramani
